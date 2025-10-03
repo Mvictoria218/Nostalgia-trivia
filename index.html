@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Nostalgia Trivia</title>
+    <link rel="stylesheet" href="/static/styles/style.css"/>
+    <link rel="icon" type="image/svg+xml" href="/static/assets/logotrivia.svg"/>
+</head>
+<body>
+    <header>
+        <h1>Nostalgia Trivia</h1>
+    </header>
+
+    <div class="container">
+
+        <!-- CONTROLES INICIAIS -->
+        <div class="controls">
+            <select id="category">
+                <option value="">Qualquer categoria</option>
+                <option value="9">Conhecimentos Gerais</option>
+                <option value="11">Filmes</option>
+                <option value="12">Música</option>
+                <option value="14">Televisão</option>
+                <option value="15">Video Games</option>
+                <option value="23">História</option>
+                <option value="22">Geografia</option>
+                <option value="27">Animais</option>
+            </select>
+
+            <select id="difficulty">
+                <option value="">Qualquer dificuldade</option>
+                <option value="easy">Fácil</option>
+                <option value="medium">Médio</option>
+                <option value="hard">Difícil</option>
+            </select>
+
+            <button id="start-btn">Iniciar Quiz</button>
+        </div>
+
+        <!-- LOADING (spinner integrado aqui) -->
+        <div class="loading" style="display:none; text-align:center; padding:20px;">
+            <div class="dot-spinner" aria-hidden="true">
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+                <div class="dot-spinner__dot"></div>
+            </div>
+            <p>Carregando perguntas...</p>
+        </div>
+
+        <!-- ERRO -->
+        <div class="error" style="display:none; text-align:center; padding:20px;">
+            <p>Ocorreu um erro ao carregar as perguntas. Tente novamente.</p>
+            <button id="retry-btn">Tentar Novamente</button>
+        </div>
+
+        <!-- QUIZ -->
+        <div class="quiz-container" style="display:none;">
+            <div class="question-container">
+                <div class="question-number">
+                    Pergunta <span id="current-question">1</span> de <span id="total-questions">10</span>
+                </div>
+
+                <!-- <-- Aqui estava faltando: -->
+                <div class="question" id="question-text">Carregando pergunta...</div>
+
+                <div class="answers" id="answers-container"></div>
+                <div class="feedback" id="feedback" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- NAVEGAÇÃO -->
+        <div class="navigation" style="display:none; margin-top:10px;">
+            <button id="next-btn">Próxima</button>
+            <button id="submit-btn" style="display:none;">Finalizar Quiz</button>
+        </div>
+
+        <!-- PROGRESSO -->
+        <div class="progress-container" style="display:none; margin-top:20px;">
+            <div class="progress-label">
+                <span>Progresso</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress" id="progress-bar"></div>
+            </div>
+        </div>
+
+        <!-- RESULTADOS -->
+        <div class="results-container" style="display:none; text-align:center; padding:20px;">
+            <h2>Quiz Finalizado!</h2>
+            <div class="score">
+                Sua pontuação: <span id="score-value">0</span> de <span id="total-score">10</span>
+            </div>
+            <div class="progress-container">
+                <div class="progress-label">
+                    <span>Desempenho</span>
+                    <span id="results-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress" id="results-progress"></div>
+                </div>
+            </div>
+            <p id="results-message"></p>
+            <button id="restart-btn">Fazer Outro Quiz</button>
+        </div>
+
+    </div>
+
+    <script>
+        // elementos
+        const startBtn = document.getElementById('start-btn');
+        const retryBtn = document.getElementById('retry-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        const categorySelect = document.getElementById('category');
+        const difficultySelect = document.getElementById('difficulty');
+
+        const loadingElement = document.querySelector('.loading');
+        const errorElement = document.querySelector('.error');
+        const quizContainer = document.querySelector('.quiz-container');
+        const resultsContainer = document.querySelector('.results-container');
+        const controlsContainer = document.querySelector('.controls');
+        const navigation = document.querySelector('.navigation');
+        const progressContainer = document.querySelectorAll('.progress-container')[0]; // o primeiro progress-container
+
+        const questionText = document.getElementById('question-text');
+        const answersContainer = document.getElementById('answers-container');
+        const feedbackElement = document.getElementById('feedback');
+        const currentQuestionElement = document.getElementById('current-question');
+        const totalQuestionsElement = document.getElementById('total-questions');
+
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const scoreValue = document.getElementById('score-value');
+        const totalScore = document.getElementById('total-score');
+        const resultsProgress = document.getElementById('results-progress');
+        const resultsPercent = document.getElementById('results-percent');
+        const resultsMessage = document.getElementById('results-message');
+
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let userAnswers = [];
+        let score = 0;
+
+        function decodeHtml(html) {
+            const txt = document.createElement('textarea');
+            txt.innerHTML = html;
+            return txt.value;
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        async function fetchQuestions() {
+            // mostrar loading (spinner)
+            loadingElement.style.display = 'block';
+            errorElement.style.display = 'none';
+            quizContainer.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            navigation.style.display = 'none';
+            progressContainer.style.display = 'none';
+            startBtn.disabled = true;
+
+            try {
+                let apiUrl = 'https://opentdb.com/api.php?amount=10&type=multiple';
+                if (categorySelect.value) apiUrl += `&category=${categorySelect.value}`;
+                if (difficultySelect.value) apiUrl += `&difficulty=${difficultySelect.value}`;
+
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+
+                if (data.response_code === 0 && data.results && data.results.length > 0) {
+                    questions = data.results;
+                    initializeQuiz();
+                } else {
+                    throw new Error('Não foi possível carregar as perguntas');
+                }
+            } catch (error) {
+                console.error('Erro ao buscar perguntas:', error);
+                loadingElement.style.display = 'none';
+                errorElement.style.display = 'block';
+            } finally {
+                startBtn.disabled = false;
+            }
+        }
+
+        function initializeQuiz() {
+            loadingElement.style.display = 'none';
+            quizContainer.style.display = 'block';
+            navigation.style.display = 'block';
+            progressContainer.style.display = 'block';
+            controlsContainer.style.display = 'none';
+
+            currentQuestionIndex = 0;
+            userAnswers = new Array(questions.length).fill(null);
+            score = 0;
+
+            totalQuestionsElement.textContent = questions.length;
+            updateProgressBar();
+            displayQuestion();
+        }
+
+        function displayQuestion() {
+    const question = questions[currentQuestionIndex];
+    currentQuestionElement.textContent = currentQuestionIndex + 1;
+    questionText.textContent = decodeHtml(question.question);
+
+    const allAnswers = shuffleArray([...question.incorrect_answers, question.correct_answer]);
+
+    answersContainer.innerHTML = '';
+    allAnswers.forEach(answer => {
+        const button = document.createElement('button');
+        button.className = 'answer-btn';
+        button.textContent = decodeHtml(answer);
+        button.addEventListener('click', () => selectAnswer(answer, button));
+        answersContainer.appendChild(button);
+    });
+
+    feedbackElement.style.display = 'none';
+
+    // Desabilita o botão "Próxima" até que o usuário escolha
+    nextBtn.disabled = true;
+
+    if (currentQuestionIndex === questions.length - 1) {
+        nextBtn.style.display = 'none';
+        submitBtn.style.display = 'inline-block';
+        submitBtn.disabled = true; // também começa desabilitado
+    } else {
+        nextBtn.style.display = 'inline-block';
+        submitBtn.style.display = 'none';
+    }
+}
+
+function selectAnswer(answer, button) {
+    if (userAnswers[currentQuestionIndex] !== null) return; // trava depois de responder
+
+    userAnswers[currentQuestionIndex] = answer;
+    const correctAnswer = questions[currentQuestionIndex].correct_answer;
+
+    if (answer === correctAnswer) {
+        feedbackElement.textContent = "Correto!";
+        feedbackElement.className = "feedback correct";
+        score++;
+    } else {
+        feedbackElement.textContent = `Incorreto! Resposta correta: ${decodeHtml(correctAnswer)}`;
+        feedbackElement.className = "feedback incorrect";
+    }
+    feedbackElement.style.display = 'block';
+
+    // bloquear botões após resposta
+    const buttons = document.querySelectorAll('.answer-btn');
+    buttons.forEach(btn => {
+        btn.disabled = true;
+        if (btn.textContent === decodeHtml(correctAnswer)) {
+            btn.classList.add('correct');
+        } else if (btn.textContent === decodeHtml(answer)) {
+            btn.classList.add('incorrect');
+        }
+    });
+
+    // habilita botão "Próxima" ou "Finalizar" depois que escolher
+    nextBtn.disabled = false;
+    submitBtn.disabled = false;
+
+    updateProgressBar();
+}
+
+
+        function nextQuestion() {
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                displayQuestion();
+            }
+        }
+
+        function updateProgressBar() {
+            const answered = userAnswers.filter(a => a !== null).length;
+            const progress = (answered / questions.length) * 100;
+            progressBar.style.width = `${progress}%`;
+            progressPercent.textContent = `${Math.round(progress)}%`;
+        }
+
+        function showResults() {
+            quizContainer.style.display = 'none';
+            navigation.style.display = 'none';
+            resultsContainer.style.display = 'block';
+
+            scoreValue.textContent = score;
+            totalScore.textContent = questions.length;
+
+            const percentage = (score / questions.length) * 100;
+            resultsProgress.style.width = `${percentage}%`;
+            resultsPercent.textContent = `${Math.round(percentage)}%`;
+
+            if (percentage >= 80) {
+                resultsMessage.textContent = 'Excelente! Você é um mestre!';
+            } else if (percentage >= 60) {
+                resultsMessage.textContent = 'Muito bom!';
+            } else if (percentage >= 40) {
+                resultsMessage.textContent = 'Continue praticando!';
+            } else {
+                resultsMessage.textContent = 'Não desanime, tente de novo!';
+            }
+        }
+
+        // listeners
+        startBtn.addEventListener('click', fetchQuestions);
+        retryBtn.addEventListener('click', fetchQuestions);
+        nextBtn.addEventListener('click', nextQuestion);
+        submitBtn.addEventListener('click', showResults);
+        restartBtn.addEventListener('click', () => {
+            resultsContainer.style.display = 'none';
+            controlsContainer.style.display = 'flex';
+            // reset visual
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+        });
+
+    </script>
+</body>
+</html>
